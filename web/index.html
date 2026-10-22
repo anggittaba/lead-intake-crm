@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board · Lead Intake to CRM (browser demo)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>
+ .tabs button { padding: 6px 12px; border-radius: 4px; border: 0; background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
+ .tabs button:hover { color: var(--text); background: var(--s2); }
+ .tabs button[aria-current] { color: var(--text); background: var(--s3); box-shadow: inset 0 -2px 0 var(--accent); }
+ tr[data-id] { cursor: pointer; }
+ dialog { background: var(--s1); color: var(--text); border: 1px solid var(--line2); border-radius: 6px; max-width: 40rem; width: 92vw; }
+ dialog::backdrop { background: oklch(0% 0 0 / .6); }
+ @media (max-width: 900px) { .kpis { grid-template-columns: repeat(3, 1fr); } .grid, .grid2 { grid-template-columns: 1fr; } .cfg { display: none; } }
+</style></head>
+<body>
+<header class="bar"><div class="bar-in">
+  <span class="brand"><i></i>Lead Intake <span class="muted">→ CRM</span></span>
+  <nav class="tabs"><button data-tab="board" aria-current="page">Board</button><button data-tab="review">Review queue <span class="n" id="n-rev"></span></button><button data-tab="log">Run log</button></nav>
+  <div class="cfg"><span>engine <b>browser</b></span><span>LLM <b>off (rules only)</b></span><span>notify <b>slack · simulated</b></span><span>sheets <b>off</b></span></div>
+</div></header>
+<main>
+<div class="callout" style="border-color:var(--accent);background:var(--accent-bg)">Browser version of the same rules: scoring, de-duplication and review routing run in your browser, on the same 24 synthetic leads, with the same results as the Python engine.
+The full n8n + FastAPI version (webhooks, SQLite CRM, optional LLM scoring, real Slack/Telegram) is in the <a href="https://github.com/anggittaba/lead-intake-crm">GitHub repo</a>.</div>
+<div class="head"><div><h1>Inbound leads</h1><p>Web form + WhatsApp → normalise → de-duplicate → score → route → CRM → notify sales</p></div>
+  <div class="act"><span class="status" id="run-status">CRM is empty</span><button class="btn primary" id="run">▶ Run demo</button></div></div>
+<section class="kpis">
+  <div class="card kpi"><div class="lbl">Received</div><div class="val" id="k-in">0</div><div class="sub" id="k-src">form 0 · WhatsApp 0</div></div>
+  <div class="card kpi hot"><div class="lbl">Hot</div><div class="val" id="k-hot">0</div><div class="sub">sales notified</div></div>
+  <div class="card kpi warm"><div class="lbl">Warm</div><div class="val" id="k-warm">0</div><div class="sub">nurture list</div></div>
+  <div class="card kpi cold"><div class="lbl">Cold</div><div class="val" id="k-cold">0</div><div class="sub">stored, no alert</div></div>
+  <div class="card kpi rev"><div class="lbl">Needs review</div><div class="val" id="k-rev">0</div><div class="sub">a person decides</div></div>
+  <div class="card kpi"><div class="lbl">Duplicates</div><div class="val" id="k-dup">0</div><div class="sub">merged, not re-alerted</div></div>
+</section>
+<div id="view"><div class="card"><div class="empty">No leads yet. Run demo sends 24 synthetic leads through the pipeline.<br><button class="btn primary" data-run>▶ Run demo</button></div></div></div>
+<p class="foot">All leads are synthetic (.test domains, made-up names). Notifications are simulated and only shown on this page. Nothing leaves your browser.</p>
+</main>
+<dialog id="dlg"></dialog>
+<script src="demo_batch.js"></script><script src="engine.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hhmm = ts => ts.slice(11, 19);
+const pill = l => l.status === "duplicate" ? '<span class="pill dup">duplicate</span>' : l.status === "review" ? '<span class="pill review">review</span>' : `<span class="pill ${l.tier}">${l.tier}</span>`;
+const conf = c => `<span class="conf ${c < 0.6 ? "low" : ""}"><i><b style="width:${Math.floor(c * 100)}%"></b></i>${c.toFixed(2)}</span>`;
+let R = null, tab = "board";
+const byId = id => R.leads.find(x => x.id === id);
+const leadLink = l => `<a href="#" data-lead="${l.id}">#${l.id} ${esc(l.name)}</a>`;
+const feed = rows => `<ul class="feed">${rows.map(r => `<li class="lv-${r.level}"><span class="t">${hhmm(r.at)}</span><span class="st">${esc(r.step)}</span><span>${esc(r.detail)}</span></li>`).join("")}</ul>`;
+const noteRows = () => R.notes.slice().reverse().map(n => `<div class="note"><span><span class="pill ${n.status}">${n.status}</span> <span class="pill simulated">${n.mode}</span> ${esc(n.text)}</span><span class="m">${hhmm(n.at)} UTC · ${n.channel} · ${n.attempts} attempt${n.attempts > 1 ? "s" : ""}</span></div>`).join("");
+const reviewRows = () => R.review.map(l => `<div class="note"><span>${leadLink(l)} · rules say <b>${l.tier}</b></span><span class="m">${esc(l.review_reason)}</span></div>`).join("") || '<p class="muted">Queue is empty.</p>';
+function render() {
+  document.querySelectorAll(".tabs button").forEach(b => b.toggleAttribute("aria-current", b.dataset.tab === tab));
+  if (!R) return;
+  const src = R.leads.reduce((a, l) => (a[l.source] = (a[l.source] || 0) + 1, a), {});
+  $("#k-in").textContent = R.leads.length; $("#k-src").textContent = `form ${src.web_form || 0} · WhatsApp ${src.whatsapp || 0}`;
+  $("#k-hot").textContent = R.tiers.hot; $("#k-warm").textContent = R.tiers.warm; $("#k-cold").textContent = R.tiers.cold;
+  $("#k-rev").textContent = R.review.length; $("#k-dup").textContent = R.dups.length; $("#n-rev").textContent = R.review.length || "";
+  let h;
+  if (tab === "review") {
+    h = `<section class="card"><div class="card-h"><h2>Review queue</h2><small>rule confidence below 0.60 · a person decides the tier</small></div>${reviewRows()}</section>`;
+  } else if (tab === "log") {
+    h = `<div class="grid2"><section class="card"><div class="card-h"><h2>Run log</h2><small>${R.retries} retries · ${R.errors} errors · ${R.log.length} steps</small></div>${feed(R.log.slice().reverse())}</section>
+      <section class="card"><div class="card-h"><h2>Notification log</h2><small>slack · simulated</small></div>${noteRows()}</section></div>`;
+  } else {
+    h = `<div class="grid"><section class="card"><div class="card-h"><h2>CRM · leads</h2><small>${R.orig.length} unique · sorted by arrival · click a row for signals</small></div>
+      <table><thead><tr><th>#</th><th>Lead</th><th>Source</th><th>Tier</th><th>Why</th><th>Confidence</th></tr></thead><tbody>
+      ${R.orig.map(l => `<tr data-id="${l.id}"><td class="num muted">${l.id}</td><td>${esc(l.name || "—")}<br><span class="muted" style="font-size:12px">${esc(l.company || l.email || l.phone)}</span></td>
+        <td class="src">${l.source === "web_form" ? "form" : "whatsapp"}</td><td>${pill(l)}</td><td class="why">${esc(l.status === "review" ? l.review_reason : l.reason)}</td><td>${conf(l.confidence)}</td></tr>`).join("")}
+      </tbody></table></section>
+      <div style="display:grid;gap:12px;align-content:start">
+      <section class="card"><div class="card-h"><h2>Review queue</h2><small>${R.review.length} waiting</small></div>${reviewRows()}</section>
+      <section class="card"><div class="card-h"><h2>Duplicates caught</h2><small>email · phone · fuzzy name+company</small></div>
+        ${R.dups.map(d => `<div class="note"><span>${leadLink(d)} → ${leadLink(byId(d.duplicate_of))}</span><span class="m">${esc(d.duplicate_reason)}</span></div>`).join("") || '<p class="muted">None.</p>'}</section></div></div>
+      <div class="grid2"><section class="card"><div class="card-h"><h2>Notification log</h2><small>slack · simulated</small></div>${noteRows()}</section>
+      <section class="card"><div class="card-h"><h2>Run log</h2><small>${R.retries} retries · ${R.errors} errors · latest 14</small></div>${feed(R.log.slice(-14).reverse())}</section></div>`;
+  }
+  $("#view").innerHTML = h;
+}
+function showLead(id) {
+  const l = byId(id), d = $("#dlg");
+  d.innerHTML = `<div class="card-h"><h2>Lead #${l.id} · ${esc(l.name)}</h2>${pill(l)}</div>
+    <dl class="kv"><dt>Company</dt><dd>${esc(l.company || "—")}</dd><dt>Role</dt><dd>${esc(l.role || "—")}</dd><dt>Email</dt><dd class="mono">${esc(l.email || "—")}</dd>
+    <dt>Phone</dt><dd class="mono">${esc(l.phone || "—")}</dd><dt>Size · budget</dt><dd>${esc(l.company_size || "—")} · ${esc(l.budget || "—")}</dd><dt>Timeline</dt><dd>${esc(l.timeline || "—")}</dd>
+    ${l.status === "duplicate" ? `<dt>Duplicate of</dt><dd>#${l.duplicate_of} (${esc(l.duplicate_reason)})</dd>` : ""}${l.status === "review" ? `<dt>Review</dt><dd>${esc(l.review_reason)}</dd>` : ""}</dl>
+    <p class="msg" style="margin:10px 0">${esc(l.message)}</p>
+    <ul class="sig">${l.signals.map(([s, p]) => `<li><span>${esc(s)}</span><span class="p ${p < 0 ? "neg" : "pos"}">${p > 0 ? "+" : ""}${p}</span></li>`).join("")}
+    <li class="total"><span>Total → ${l.tier}, confidence ${l.confidence.toFixed(2)}</span><span class="p">${l.points}</span></li></ul>
+    <form method="dialog" style="margin-top:12px;text-align:right"><button class="btn">Close</button></form>`;
+  d.showModal();
+}
+async function run() {
+  const btns = document.querySelectorAll("#run,[data-run]"); btns.forEach(b => b.disabled = true);
+  $("#run-status").textContent = "running 24 leads…";
+  await new Promise(r => setTimeout(r, 250));
+  R = LeadEngine.runDemo(window.DEMO_BATCH);
+  $("#run-status").textContent = `${R.run_id} · ${R.leads.length} in · ${R.review.length} to review · ${R.dups.length} duplicates`;
+  btns.forEach(b => b.disabled = false); tab = "board"; render();
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("#run,[data-run],[data-tab],[data-lead],tr[data-id]"); if (!t) return;
+  if (t.matches("#run,[data-run]")) run();
+  else if (t.dataset.tab) { tab = t.dataset.tab; render(); if (!R) $("#run-status").textContent = "press Run demo first"; }
+  else { e.preventDefault(); showLead(+(t.dataset.lead || t.dataset.id)); }
+});
+if (new URLSearchParams(location.search).has("run")) run();
+</script>
+</body></html>

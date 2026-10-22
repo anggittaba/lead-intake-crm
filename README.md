@@ -1,5 +1,8 @@
 # Lead Intake to CRM
 
+**Live demo (one click, no install):** https://huggingface.co/spaces/Anggittaba/lead-intake-crm  
+Browser version of the same rules on the same 24 synthetic leads (`web/`, checked against the Python engine by `tests/test_web_demo.py`). The full n8n + FastAPI version is this repo.
+
 An n8n workflow plus a small FastAPI CRM that takes inbound leads from a web form and a (simulated) WhatsApp
 webhook, cleans them up, catches duplicates, scores them hot / warm / cold with a one-line reason, sends unclear
 ones to a person, stores everything in SQLite and pings sales about the leads worth a call.
