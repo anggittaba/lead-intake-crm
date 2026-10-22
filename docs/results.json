@@ -1,0 +1,52 @@
+{
+  "dev_generated": {
+    "n": 150,
+    "correct": 148,
+    "accuracy": 0.987,
+    "auto_routed": 121,
+    "auto_correct": 121,
+    "auto_accuracy": 1.0,
+    "sent_to_review": 29,
+    "review_rate": 0.193,
+    "confusion": {
+      "hot->hot": 50,
+      "hot->warm": 0,
+      "hot->cold": 0,
+      "warm->hot": 0,
+      "warm->warm": 48,
+      "warm->cold": 2,
+      "cold->hot": 0,
+      "cold->warm": 0,
+      "cold->cold": 50
+    }
+  },
+  "heldout_handwritten": {
+    "n": 40,
+    "correct": 32,
+    "accuracy": 0.8,
+    "auto_routed": 31,
+    "auto_correct": 26,
+    "auto_accuracy": 0.839,
+    "sent_to_review": 9,
+    "review_rate": 0.225,
+    "confusion": {
+      "hot->hot": 11,
+      "hot->warm": 0,
+      "hot->cold": 1,
+      "warm->hot": 2,
+      "warm->warm": 9,
+      "warm->cold": 3,
+      "cold->hot": 0,
+      "cold->warm": 2,
+      "cold->cold": 12
+    }
+  },
+  "dedupe": {
+    "planted": 4,
+    "caught": 4,
+    "missed": 0,
+    "false_positives_demo": 0,
+    "non_duplicate_leads_checked": 190,
+    "false_alarms": 0
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "id": "LeadIntakeErr01",
+  "name": "Lead Intake: error handler",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CRM_BASE_URL || 'http://127.0.0.1:8830' }}/api/steps/log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_id: 'n8n-error', step: 'n8n.error', level: 'error', detail: ($json.execution.lastNodeExecuted || '?') + ': ' + (($json.execution.error || {}).message || 'unknown error') + ' (execution ' + $json.execution.id + ')' }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Write error to run log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "id": "b0000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Write error to run log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

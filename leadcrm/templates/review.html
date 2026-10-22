@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_macros.html" import tierpill, conf %}
+{% block title %}Review queue{% endblock %}
+{% block main %}
+<div class="head"><div><h1>Review queue</h1><p>Leads the scorer was not confident about, or where the LLM and the rules disagreed. A person sets the final tier.</p></div></div>
+<section class="card">
+{% if rows %}<table><thead><tr><th>#</th><th>Lead</th><th>Message</th><th>Rules</th><th>Confidence</th><th>Why it's here</th><th>Decide</th></tr></thead><tbody>
+{% for l in rows %}<tr><td class="num muted">{{ l.id }}</td>
+  <td><a href="/leads/{{ l.id }}">{{ l.name or '—' }}</a><br><span class="muted" style="font-size:12px">{{ l.role }}{{ ' · ' if l.role and l.company }}{{ l.company }}</span></td>
+  <td class="why" style="max-width:26rem">{{ l.message }}</td>
+  <td><span class="pill {{ l.tier }}">{{ l.tier }}</span></td><td>{{ conf(l.confidence) }}</td>
+  <td class="why" style="max-width:16rem">{{ l.review_reason }}</td>
+  <td>{% if l.status=='reviewed' %}{{ tierpill(l) }} <span class="muted" style="font-size:12px">set by reviewer</span>
+  {% else %}<form class="rv" method="post" action="/api/review/{{ l.id }}">{% for t in ['hot','warm','cold'] %}<button class="btn" name="tier" value="{{ t }}">{{ t }}</button>{% endfor %}</form>{% endif %}</td></tr>
+{% endfor %}</tbody></table>
+{% else %}<div class="empty">Nothing to review. Run the demo from the board first.</div>{% endif %}
+</section>
+{% endblock %}

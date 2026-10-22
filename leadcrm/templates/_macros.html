@@ -1,0 +1,7 @@
+{% macro tierpill(l) -%}
+{%- if l.status == 'duplicate' %}<span class="pill dup">duplicate</span>
+{%- elif l.status == 'review' %}<span class="pill review">review</span>
+{%- else %}{% set t = l.reviewed_tier or l.tier %}<span class="pill {{ t }}">{{ t }}</span>{% endif -%}
+{%- endmacro %}
+{% macro conf(c) -%}<span class="conf {{ 'low' if c < 0.6 else '' }}"><i><b style="width:{{ (c*100)|int }}%"></b></i>{{ '%.2f'|format(c) }}</span>{%- endmacro %}
+{% macro hhmm(ts) -%}{{ ts[11:19] }}{%- endmacro %}

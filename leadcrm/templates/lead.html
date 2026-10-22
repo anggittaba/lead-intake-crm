@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% from "_macros.html" import tierpill, conf, hhmm %}
+{% block title %}Lead #{{ lead.id }}{% endblock %}
+{% block main %}
+<div class="head"><div><h1>#{{ lead.id }} · {{ lead.name or 'Unknown sender' }} {{ tierpill(lead) }}</h1>
+<p>{{ lead.role }}{{ ' · ' if lead.role and lead.company }}{{ lead.company }} · via {{ 'web form' if lead.source=='web_form' else 'WhatsApp (simulated)' }} · {{ lead.created_at[:19]|replace('T',' ') }} UTC</p></div>
+<div class="act"><a class="btn" href="/">← Board</a></div></div>
+{% if lead.status=='review' %}<div class="callout"><b>In review:</b> {{ lead.review_reason }}</div>{% endif %}
+{% if orig %}<div class="callout" style="border-color:var(--line2);background:var(--s2)"><b>Duplicate</b> of <a href="/leads/{{ orig.id }}">#{{ orig.id }} {{ orig.name }}</a> ({{ lead.duplicate_reason }}). Stored for history, no new alert sent.</div>{% endif %}
+<div class="verdicts">
+  <div class="card"><h2>Rules (deterministic)</h2><div class="big"><span class="pill {{ lead.tier }}">{{ lead.tier }}</span> {{ lead.points }} pts · {{ conf(lead.confidence) }}</div></div>
+  <div class="card"><h2>LLM (optional)</h2><div class="big">{% if lead.llm_tier %}<span class="pill {{ lead.llm_tier }}">{{ lead.llm_tier }}</span> {{ lead.llm_reason }}{% else %}<span class="muted">not run — no LLM_API_KEY set</span>{% endif %}</div></div>
+  <div class="card"><h2>Human</h2><div class="big">{% if lead.reviewed_tier %}<span class="pill {{ lead.reviewed_tier }}">{{ lead.reviewed_tier }}</span> {{ lead.reviewed_note }}
+    {% elif lead.status=='review' %}<form class="rv" method="post" action="/api/review/{{ lead.id }}"><input type="text" name="note" placeholder="note (optional)">{% for t in ['hot','warm','cold'] %}<button class="btn" name="tier" value="{{ t }}">{{ t }}</button>{% endfor %}</form>
+    {% else %}<span class="muted">not needed (auto-routed)</span>{% endif %}</div></div>
+</div>
+<div class="grid">
+  <section class="card"><div class="card-h"><h2>Normalised record</h2><small>what the CRM stores</small></div>
+    <dl class="kv">{% for k in ['name','email','phone','company','role','company_size','budget','timeline'] %}<dt>{{ k|replace('_',' ') }}</dt><dd class="{{ 'mono' if k in ['email','phone'] }}">{{ lead[k] or '—' }}</dd>{% endfor %}
+    <dt>message</dt><dd><div class="msg">{{ lead.message or '—' }}</div></dd></dl>
+    <div class="card-h" style="margin-top:14px"><h2>Raw payload</h2><small>as received</small></div>
+    <pre class="raw">{{ lead.raw|tojson(indent=2) }}</pre></section>
+  <div style="display:grid;gap:12px;align-content:start">
+  <section class="card"><div class="card-h"><h2>Score breakdown</h2><small>hot ≥ 7 · warm 3–6 · cold &lt; 3</small></div>
+    <ul class="sig">{% for s, p in (lead.signals or []) %}<li><span>{{ s }}</span><span class="p {{ 'neg' if p < 0 else 'pos' }}">{{ '%+d'|format(p) }}</span></li>{% endfor %}
+    <li class="total"><span>Total</span><span class="p">{{ lead.points }}</span></li></ul></section>
+  <section class="card"><div class="card-h"><h2>Notifications</h2></div>
+    {% for n in notes %}<div class="note"><span><span class="pill {{ n.status }}">{{ n.status }}</span> {{ n.text }}</span><span class="m">{{ n.channel }} · {{ n.mode }} · {{ n.attempts }} attempt(s)</span></div>
+    {% else %}<p class="muted" style="font-size:13px">None — only hot and review leads alert sales.</p>{% endfor %}</section>
+  <section class="card"><div class="card-h"><h2>Run log</h2><small>{{ lead.run_id }}</small></div>
+    <ul class="feed">{% for r in log %}<li class="lv-{{ r.level }}"><span class="t">{{ hhmm(r.at) }}</span><span class="st">{{ r.step }}</span><span>{{ r.detail }}</span></li>{% endfor %}</ul></section>
+  {% if dups %}<section class="card"><div class="card-h"><h2>Later duplicates</h2></div>{% for d in dups %}<div class="note"><a href="/leads/{{ d.id }}">#{{ d.id }} {{ d.name }}</a><span class="m">{{ d.duplicate_reason }}</span></div>{% endfor %}</section>{% endif %}
+  </div>
+</div>
+{% endblock %}

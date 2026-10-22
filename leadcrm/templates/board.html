@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% from "_macros.html" import tierpill, conf, hhmm %}
+{% block title %}Board{% endblock %}
+{% block main %}
+<div class="head"><div><h1>Inbound leads</h1><p>Web form + WhatsApp → normalise → de-duplicate → score → route → CRM → notify sales</p></div>
+  <div class="act"><span class="status" id="run-status">{% if b.total_in %}{{ b.total_in }} rows in CRM{% else %}CRM is empty{% endif %}</span>
+  <button class="btn primary" data-run-demo>▶ Run demo</button></div></div>
+<section class="kpis">
+  <div class="card kpi"><div class="lbl">Received</div><div class="val">{{ b.total_in }}</div><div class="sub">form {{ b.by_source.get('web_form',0) }} · WhatsApp {{ b.by_source.get('whatsapp',0) }}</div></div>
+  <div class="card kpi hot"><div class="lbl">Hot</div><div class="val">{{ b.tiers.hot }}</div><div class="sub">sales notified</div></div>
+  <div class="card kpi warm"><div class="lbl">Warm</div><div class="val">{{ b.tiers.warm }}</div><div class="sub">nurture list</div></div>
+  <div class="card kpi cold"><div class="lbl">Cold</div><div class="val">{{ b.tiers.cold }}</div><div class="sub">stored, no alert</div></div>
+  <div class="card kpi rev"><div class="lbl">Needs review</div><div class="val">{{ b.review|length }}</div><div class="sub">a person decides</div></div>
+  <div class="card kpi"><div class="lbl">Duplicates</div><div class="val">{{ b.dups|length }}</div><div class="sub">merged, not re-alerted</div></div>
+</section>
+{% if not b.total_in %}
+<div class="card"><div class="empty">No leads yet. The demo resets the CRM and sends 24 synthetic leads through the pipeline.<br>
+<button class="btn primary" data-run-demo>▶ Run demo</button></div></div>
+{% else %}
+<div class="grid">
+  <section class="card"><div class="card-h"><h2>CRM · leads</h2><small>{{ b.leads|length }} unique · sorted by arrival</small></div>
+  <table><thead><tr><th>#</th><th>Lead</th><th>Source</th><th>Tier</th><th>Why</th><th>Confidence</th></tr></thead><tbody>
+  {% for l in b.leads %}<tr><td class="num muted">{{ l.id }}</td>
+    <td><a href="/leads/{{ l.id }}">{{ l.name or '—' }}</a><br><span class="muted" style="font-size:12px">{{ l.company or l.email or l.phone }}</span></td>
+    <td class="src">{{ 'form' if l.source=='web_form' else 'whatsapp' }}</td><td>{{ tierpill(l) }}</td>
+    <td class="why">{{ l.review_reason if l.status=='review' else l.reason }}</td><td>{{ conf(l.confidence) }}</td></tr>{% endfor %}
+  </tbody></table></section>
+  <div style="display:grid;gap:12px;align-content:start">
+  <section class="card"><div class="card-h"><h2>Review queue</h2><a class="muted" style="font-size:12px" href="/review">open →</a></div>
+    {% for l in b.review %}<div class="note"><span><a href="/leads/{{ l.id }}">#{{ l.id }} {{ l.name }}</a> · rules say <b>{{ l.tier }}</b></span><span class="m">{{ l.review_reason }}</span></div>
+    {% else %}<p class="muted">Queue is empty.</p>{% endfor %}</section>
+  <section class="card"><div class="card-h"><h2>Duplicates caught</h2><small>email · phone · fuzzy name+company</small></div>
+    {% for d in b.dups %}{% set o = b.lookup[d.duplicate_of] %}<div class="note"><span><a href="/leads/{{ d.id }}">#{{ d.id }} {{ d.name }}</a> → <a href="/leads/{{ o.id }}">#{{ o.id }} {{ o.name }}</a></span><span class="m">{{ d.duplicate_reason }}</span></div>
+    {% else %}<p class="muted">None.</p>{% endfor %}</section>
+  </div>
+</div>
+<div class="grid2">
+  <section class="card"><div class="card-h"><h2>Notification log</h2><small>{{ cfg.notify }}</small></div>
+    {% for n in b.notes %}<div class="note"><span><span class="pill {{ n.status }}">{{ n.status }}</span> <span class="pill simulated">{{ n.mode }}</span> {{ n.text }}</span>
+    <span class="m">{{ hhmm(n.at) }} UTC · {{ n.channel }} · {{ n.attempts }} attempt{{ 's' if n.attempts>1 }}</span></div>{% endfor %}</section>
+  <section class="card"><div class="card-h"><h2>Run log</h2><small>{{ b.retries }} retries · {{ b.errors }} errors · <a href="/log">full log →</a></small></div>
+    <ul class="feed">{% for r in b.log %}<li class="lv-{{ r.level }}"><span class="t">{{ hhmm(r.at) }}</span><span class="st">{{ r.step }}</span><span>{{ r.detail }}</span></li>{% endfor %}</ul></section>
+</div>
+{% endif %}
+{% endblock %}

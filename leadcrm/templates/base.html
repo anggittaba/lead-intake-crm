@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Lead Intake{% endblock %} · Lead Intake to CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/styles.css"></head>
+<body>
+<header class="bar"><div class="bar-in">
+  <a class="brand" href="/"><i></i>Lead Intake <span class="muted">→ CRM</span></a>
+  <nav class="tabs">
+    <a href="/" {% if tab=='board' %}aria-current="page"{% endif %}>Board</a>
+    <a href="/review" {% if tab=='review' %}aria-current="page"{% endif %}>Review queue</a>
+    <a href="/log" {% if tab=='log' %}aria-current="page"{% endif %}>Run log</a>
+  </nav>
+  <div class="cfg"><span>engine <b>{{ cfg.engine }}</b></span><span>LLM <b>{{ cfg.llm }}</b></span>
+    <span>notify <b>{{ cfg.notify }}</b></span><span>sheets <b>{{ cfg.sheets }}</b></span></div>
+</div></header>
+<main>{% block main %}{% endblock %}
+<p class="foot">All leads are synthetic. Notifications are simulated unless a Slack or Telegram token is configured.</p></main>
+<script>
+document.querySelectorAll('[data-run-demo]').forEach(b => b.addEventListener('click', async () => {
+  const s = document.getElementById('run-status'); b.disabled = true; if (s) s.textContent = 'running 24 leads…';
+  const r = await fetch('/api/demo/run', {method: 'POST'}); const j = await r.json();
+  if (s) s.textContent = `${j.run_id} · ${j.rows} in · ${j.review} to review · ${j.duplicates} duplicates`;
+  location.href = '/?ran=' + j.run_id;
+}));
+</script>
+</body></html>

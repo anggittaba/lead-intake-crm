@@ -1,0 +1,10 @@
+# Render blueprint (not deployed). Free web service from the Dockerfile; data resets on every deploy/restart.
+services:
+  - type: web
+    name: lead-intake-crm-demo
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "7860"

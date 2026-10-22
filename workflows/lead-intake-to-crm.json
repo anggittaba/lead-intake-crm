@@ -1,0 +1,442 @@
+{
+  "id": "LeadIntakeCRM01",
+  "name": "Lead Intake to CRM",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-form",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Web form webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "6f1d2c1e-lead-form",
+      "id": "a0000000-0000-4000-8000-000000000000"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "WhatsApp webhook (simulated)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        220
+      ],
+      "webhookId": "6f1d2c1e-lead-whatsapp",
+      "id": "a0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Shape both intake channels into one envelope for the CRM step API.\nconst b = $json.body || {};\nconst { run_id, expected_tier, fail_first, ...payload } = b;\nreturn [{ json: { source: 'web_form', run_id: run_id || ('n8n-' + $execution.id), expected_tier: expected_tier || null,\n                  fail_first: Number(fail_first || 0), payload } }];"
+      },
+      "name": "Tag: web form",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "a0000000-0000-4000-8000-000000000002"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Shape both intake channels into one envelope for the CRM step API.\nconst b = $json.body || {};\nconst { run_id, expected_tier, fail_first, ...payload } = b;\nreturn [{ json: { source: 'whatsapp', run_id: run_id || ('n8n-' + $execution.id), expected_tier: expected_tier || null,\n                  fail_first: Number(fail_first || 0), payload } }];"
+      },
+      "name": "Tag: WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        220
+      ],
+      "id": "a0000000-0000-4000-8000-000000000003"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CRM_BASE_URL || 'http://127.0.0.1:8830' }}/api/steps/prepare",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Prepare: normalise + dedupe + rule score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "id": "a0000000-0000-4000-8000-000000000004"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "llm-key-set-and-not-a-duplicate?",
+              "leftValue": "={{ $json.llm_enabled && !$json.duplicate_of }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "LLM key set and not a duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        100
+      ],
+      "id": "a0000000-0000-4000-8000-000000000005"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.LLM_BASE_URL || 'https://api.openai.com/v1') + '/chat/completions' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.LLM_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.LLM_MODEL || 'gpt-4o-mini', temperature: 0, messages: [{ role: 'user', content: $json.llm_prompt + JSON.stringify({ role: $json.lead.role, company: $json.lead.company, company_size: $json.lead.company_size, budget: $json.lead.budget, timeline: $json.lead.timeline, message: $json.lead.message }) }] }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "LLM score (optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        940,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "id": "a0000000-0000-4000-8000-000000000006"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Join the rule result with the optional LLM verdict. If the LLM branch did not run or failed, llm stays null\n// and the deterministic rules decide alone.\nconst prep = $('Prepare: normalise + dedupe + rule score').first().json;\nlet llm = null;\nconst j = $input.first().json;\nif (j && j.choices) {\n  try { const t = j.choices[0].message.content; llm = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); }\n  catch (e) { llm = null; }\n}\nreturn [{ json: { prep, llm, run_id: prep.run_id, expected_tier: prep.expected_tier } }];"
+      },
+      "name": "Join rules + LLM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        100
+      ],
+      "id": "a0000000-0000-4000-8000-000000000007"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CRM_BASE_URL || 'http://127.0.0.1:8830' }}/api/steps/store",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Store in CRM (decide route)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1380,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "id": "a0000000-0000-4000-8000-000000000008"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.SHEETS_DOC_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "name": "Google Sheets mirror (optional)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1600,
+        300
+      ],
+      "disabled": true,
+      "notes": "Disabled by default. Add Google credentials + SHEETS_DOC_ID and enable to mirror every lead to a sheet.",
+      "id": "a0000000-0000-4000-8000-000000000009"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "hot-or-needs-review?",
+              "leftValue": "={{ ['hot','review'].includes($json.route) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Hot or needs review?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        100
+      ],
+      "id": "a0000000-0000-4000-8000-000000000010"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CRM_BASE_URL || 'http://127.0.0.1:8830' }}/api/steps/notify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ lead_id: $json.id, run_id: $json.run_id, fail_first: $('Prepare: normalise + dedupe + rule score').first().json.fail_first }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Notify sales (Slack/Telegram or simulated)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1840,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "id": "a0000000-0000-4000-8000-000000000011"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Store in CRM (decide route)').first().json) }}",
+        "options": {}
+      },
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2080,
+        100
+      ],
+      "id": "a0000000-0000-4000-8000-000000000012"
+    }
+  ],
+  "connections": {
+    "Web form webhook": {
+      "main": [
+        [
+          {
+            "node": "Tag: web form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp webhook (simulated)": {
+      "main": [
+        [
+          {
+            "node": "Tag: WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag: web form": {
+      "main": [
+        [
+          {
+            "node": "Prepare: normalise + dedupe + rule score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag: WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Prepare: normalise + dedupe + rule score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare: normalise + dedupe + rule score": {
+      "main": [
+        [
+          {
+            "node": "LLM key set and not a duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM key set and not a duplicate?": {
+      "main": [
+        [
+          {
+            "node": "LLM score (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Join rules + LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM score (optional)": {
+      "main": [
+        [
+          {
+            "node": "Join rules + LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Join rules + LLM": {
+      "main": [
+        [
+          {
+            "node": "Store in CRM (decide route)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in CRM (decide route)": {
+      "main": [
+        [
+          {
+            "node": "Hot or needs review?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets mirror (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot or needs review?": {
+      "main": [
+        [
+          {
+            "node": "Notify sales (Slack/Telegram or simulated)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify sales (Slack/Telegram or simulated)": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "LeadIntakeErr01",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}

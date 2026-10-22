@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_macros.html" import hhmm %}
+{% block title %}Run log{% endblock %}
+{% block main %}
+<div class="head"><div><h1>Run log</h1><p>Every step, retry and error, newest first. Times in UTC.</p></div></div>
+<div class="grid">
+<section class="card"><ul class="feed">{% for r in log %}<li class="lv-{{ r.level }}"><span class="t">{{ hhmm(r.at) }}</span><span class="st">{{ r.step }}</span><span>{% if r.lead_id %}<a href="/leads/{{ r.lead_id }}">#{{ r.lead_id }}</a> {% endif %}{{ r.detail }}</span></li>
+{% else %}<li><span></span><span></span><span class="muted">Empty.</span></li>{% endfor %}</ul></section>
+<section class="card"><div class="card-h"><h2>Notifications</h2></div>{% for n in notes %}<div class="note"><span><span class="pill {{ n.status }}">{{ n.status }}</span> {{ n.text }}</span><span class="m">{{ hhmm(n.at) }} · {{ n.channel }} · {{ n.mode }} · {{ n.attempts }} attempt(s){{ ' · ' + n.error if n.error }}</span></div>{% endfor %}</section>
+</div>
+{% endblock %}
