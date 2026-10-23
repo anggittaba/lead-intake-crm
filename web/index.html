@@ -1,108 +1,118 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Board · Lead Intake to CRM (browser demo)</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="styles.css">
-<style>
- .tabs button { padding: 6px 12px; border-radius: 4px; border: 0; background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
- .tabs button:hover { color: var(--text); background: var(--s2); }
- .tabs button[aria-current] { color: var(--text); background: var(--s3); box-shadow: inset 0 -2px 0 var(--accent); }
- tr[data-id] { cursor: pointer; }
- dialog { background: var(--s1); color: var(--text); border: 1px solid var(--line2); border-radius: 6px; max-width: 40rem; width: 92vw; }
- dialog::backdrop { background: oklch(0% 0 0 / .6); }
- @media (max-width: 900px) { .kpis { grid-template-columns: repeat(3, 1fr); } .grid, .grid2 { grid-template-columns: 1fr; } .cfg { display: none; } }
-</style></head>
+<title>Lead Sorter · see which customer enquiries to call first (demo)</title>
+<link rel="stylesheet" href="styles.css"></head>
 <body>
-<header class="bar"><div class="bar-in">
-  <span class="brand"><i></i>Lead Intake <span class="muted">→ CRM</span></span>
-  <nav class="tabs"><button data-tab="board" aria-current="page">Board</button><button data-tab="review">Review queue <span class="n" id="n-rev"></span></button><button data-tab="log">Run log</button></nav>
-  <div class="cfg"><span>engine <b>browser</b></span><span>LLM <b>off (rules only)</b></span><span>notify <b>slack · simulated</b></span><span>sheets <b>off</b></span></div>
-</div></header>
-<main>
-<div class="callout" style="border-color:var(--accent);background:var(--accent-bg)">Browser version of the same rules: scoring, de-duplication and review routing run in your browser, on the same 24 synthetic leads, with the same results as the Python engine.
-The full n8n + FastAPI version (webhooks, SQLite CRM, optional LLM scoring, real Slack/Telegram) is in the <a href="https://github.com/anggittaba/lead-intake-crm">GitHub repo</a>.</div>
-<div class="head"><div><h1>Inbound leads</h1><p>Web form + WhatsApp → normalise → de-duplicate → score → route → CRM → notify sales</p></div>
-  <div class="act"><span class="status" id="run-status">CRM is empty</span><button class="btn primary" id="run">▶ Run demo</button></div></div>
-<section class="kpis">
-  <div class="card kpi"><div class="lbl">Received</div><div class="val" id="k-in">0</div><div class="sub" id="k-src">form 0 · WhatsApp 0</div></div>
-  <div class="card kpi hot"><div class="lbl">Hot</div><div class="val" id="k-hot">0</div><div class="sub">sales notified</div></div>
-  <div class="card kpi warm"><div class="lbl">Warm</div><div class="val" id="k-warm">0</div><div class="sub">nurture list</div></div>
-  <div class="card kpi cold"><div class="lbl">Cold</div><div class="val" id="k-cold">0</div><div class="sub">stored, no alert</div></div>
-  <div class="card kpi rev"><div class="lbl">Needs review</div><div class="val" id="k-rev">0</div><div class="sub">a person decides</div></div>
-  <div class="card kpi"><div class="lbl">Duplicates</div><div class="val" id="k-dup">0</div><div class="sub">merged, not re-alerted</div></div>
+<header class="top"><div class="wrap"><span class="logo"><i></i>Lead Sorter</span><a href="https://github.com/anggittaba/lead-intake-crm">Code on GitHub</a></div></header>
+<main class="wrap">
+<section class="hero">
+  <h1>Businesses lose customers when enquiries sit in an inbox.<br><em>This sorts them automatically.</em></h1>
+  <p>Every new message is checked, given a priority, and sent to the right person, so the best leads get a call the same day.</p>
+  <button class="btn big" id="run">▶ Run demo</button>
+  <div class="hint" id="status">Sends 24 made-up customer messages through the sorter. Takes about 5 seconds.</div>
 </section>
-<div id="view"><div class="card"><div class="empty">No leads yet. Run demo sends 24 synthetic leads through the pipeline.<br><button class="btn primary" data-run>▶ Run demo</button></div></div></div>
-<p class="foot">All leads are synthetic (.test domains, made-up names). Notifications are simulated and only shown on this page. Nothing leaves your browser.</p>
+
+<section aria-label="How it works">
+  <h2>How it works</h2><p class="sub">Three steps, no manual sorting.</p>
+  <div class="flow">
+    <div class="step"><div class="n">1</div><h3>Leads come in</h3><p>From the website form and WhatsApp.</p><div class="lane" id="lane-in"></div></div>
+    <div class="arrow">➜</div>
+    <div class="step"><div class="n">2</div><h3>Scored &amp; checked</h3><p>Hot, warm or cold. Repeat messages are caught.</p><div class="lane" id="lane-score"></div></div>
+    <div class="arrow">➜</div>
+    <div class="step"><div class="n">3</div><h3>Sent to the right place</h3><p>Who gets each lead.</p>
+      <div class="dest">
+        <div id="d-hot"><span>🔔 Sales team, alerted now</span><b>0</b></div>
+        <div id="d-warm"><span>📋 Follow-up list</span><b>0</b></div>
+        <div id="d-cold"><span>🗂️ Saved, no alert</span><b>0</b></div>
+        <div id="d-review"><span>👀 A person double-checks</span><b>0</b></div>
+        <div id="d-duplicate"><span>🔁 Merged with the first message</span><b>0</b></div>
+      </div></div>
+  </div>
+</section>
+
+<section aria-label="Results">
+  <h2>Results</h2><p class="sub">What the sorter decided.</p>
+  <div class="cards">
+    <div class="rc c-hot"><div class="k">Hot</div><div class="v" id="c-hot">–</div><div class="d">Call today. Ready to buy soon.</div></div>
+    <div class="rc c-warm"><div class="k">Warm</div><div class="v" id="c-warm">–</div><div class="d">Interested. Follow up this week.</div></div>
+    <div class="rc c-cold"><div class="k">Cold</div><div class="v" id="c-cold">–</div><div class="d">Not buying now, or spam. No alert.</div></div>
+    <div class="rc c-review"><div class="k">Check</div><div class="v" id="c-review">–</div><div class="d">Not enough info. A person decides.</div></div>
+    <div class="rc c-duplicate"><div class="k">Repeats</div><div class="v" id="c-duplicate">–</div><div class="d">Same person wrote twice. Not counted again.</div></div>
+  </div>
+</section>
+
+<section aria-label="Leads">
+  <h2>Every lead, and why</h2><p class="sub">Plain-language reason for each decision.</p>
+  <div class="box" id="table"><div class="empty">Press <b>Run demo</b> above to fill this list.</div></div>
+</section>
+
+<section aria-label="Try your own lead">
+  <h2>Try your own lead</h2><p class="sub">Write a message like a customer would. See the score and the reasons.</p>
+  <div class="try">
+    <div class="box pad"><form id="try">
+      <label>Message<textarea id="t-msg">Hi, we need our website enquiries sent to our CRM automatically. Can you send pricing? We want to start next week.</textarea></label>
+      <div class="row2"><label>Job title<input id="t-role" value="Operations Manager"></label>
+        <label>Company size<select id="t-size"><option value="">Not given</option><option>1-10</option><option>11-50</option><option selected>51-200</option><option>201-1000</option><option>1000+</option></select></label></div>
+      <div class="row2"><label>Budget<input id="t-budget" placeholder="e.g. USD 5,000" value="USD 5,000"></label><label>Company<input id="t-company" value="Example Clinic"></label></div>
+      <button class="btn big" type="submit">Score this lead</button>
+    </form></div>
+    <div class="box pad" id="t-out"></div>
+  </div>
+</section>
+
+<div class="note"><b>Honest note:</b> this browser version uses fixed rules only — no AI and no n8n — and runs entirely in your browser. All names and companies are made up, and alerts are simulated (nothing is sent). The full version (n8n workflow, CRM database, optional AI scoring, real Slack/Telegram alerts) is in the <a href="https://github.com/anggittaba/lead-intake-crm">GitHub repo</a>. Rule accuracy on 40 self-written test leads: 32/40 (80%).</div>
 </main>
-<dialog id="dlg"></dialog>
+<footer>Synthetic demo data only.</footer>
 <script src="demo_batch.js"></script><script src="engine.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const hhmm = ts => ts.slice(11, 19);
-const pill = l => l.status === "duplicate" ? '<span class="pill dup">duplicate</span>' : l.status === "review" ? '<span class="pill review">review</span>' : `<span class="pill ${l.tier}">${l.tier}</span>`;
-const conf = c => `<span class="conf ${c < 0.6 ? "low" : ""}"><i><b style="width:${Math.floor(c * 100)}%"></b></i>${c.toFixed(2)}</span>`;
-let R = null, tab = "board";
-const byId = id => R.leads.find(x => x.id === id);
-const leadLink = l => `<a href="#" data-lead="${l.id}">#${l.id} ${esc(l.name)}</a>`;
-const feed = rows => `<ul class="feed">${rows.map(r => `<li class="lv-${r.level}"><span class="t">${hhmm(r.at)}</span><span class="st">${esc(r.step)}</span><span>${esc(r.detail)}</span></li>`).join("")}</ul>`;
-const noteRows = () => R.notes.slice().reverse().map(n => `<div class="note"><span><span class="pill ${n.status}">${n.status}</span> <span class="pill simulated">${n.mode}</span> ${esc(n.text)}</span><span class="m">${hhmm(n.at)} UTC · ${n.channel} · ${n.attempts} attempt${n.attempts > 1 ? "s" : ""}</span></div>`).join("");
-const reviewRows = () => R.review.map(l => `<div class="note"><span>${leadLink(l)} · rules say <b>${l.tier}</b></span><span class="m">${esc(l.review_reason)}</span></div>`).join("") || '<p class="muted">Queue is empty.</p>';
-function render() {
-  document.querySelectorAll(".tabs button").forEach(b => b.toggleAttribute("aria-current", b.dataset.tab === tab));
-  if (!R) return;
-  const src = R.leads.reduce((a, l) => (a[l.source] = (a[l.source] || 0) + 1, a), {});
-  $("#k-in").textContent = R.leads.length; $("#k-src").textContent = `form ${src.web_form || 0} · WhatsApp ${src.whatsapp || 0}`;
-  $("#k-hot").textContent = R.tiers.hot; $("#k-warm").textContent = R.tiers.warm; $("#k-cold").textContent = R.tiers.cold;
-  $("#k-rev").textContent = R.review.length; $("#k-dup").textContent = R.dups.length; $("#n-rev").textContent = R.review.length || "";
-  let h;
-  if (tab === "review") {
-    h = `<section class="card"><div class="card-h"><h2>Review queue</h2><small>rule confidence below 0.60 · a person decides the tier</small></div>${reviewRows()}</section>`;
-  } else if (tab === "log") {
-    h = `<div class="grid2"><section class="card"><div class="card-h"><h2>Run log</h2><small>${R.retries} retries · ${R.errors} errors · ${R.log.length} steps</small></div>${feed(R.log.slice().reverse())}</section>
-      <section class="card"><div class="card-h"><h2>Notification log</h2><small>slack · simulated</small></div>${noteRows()}</section></div>`;
-  } else {
-    h = `<div class="grid"><section class="card"><div class="card-h"><h2>CRM · leads</h2><small>${R.orig.length} unique · sorted by arrival · click a row for signals</small></div>
-      <table><thead><tr><th>#</th><th>Lead</th><th>Source</th><th>Tier</th><th>Why</th><th>Confidence</th></tr></thead><tbody>
-      ${R.orig.map(l => `<tr data-id="${l.id}"><td class="num muted">${l.id}</td><td>${esc(l.name || "—")}<br><span class="muted" style="font-size:12px">${esc(l.company || l.email || l.phone)}</span></td>
-        <td class="src">${l.source === "web_form" ? "form" : "whatsapp"}</td><td>${pill(l)}</td><td class="why">${esc(l.status === "review" ? l.review_reason : l.reason)}</td><td>${conf(l.confidence)}</td></tr>`).join("")}
-      </tbody></table></section>
-      <div style="display:grid;gap:12px;align-content:start">
-      <section class="card"><div class="card-h"><h2>Review queue</h2><small>${R.review.length} waiting</small></div>${reviewRows()}</section>
-      <section class="card"><div class="card-h"><h2>Duplicates caught</h2><small>email · phone · fuzzy name+company</small></div>
-        ${R.dups.map(d => `<div class="note"><span>${leadLink(d)} → ${leadLink(byId(d.duplicate_of))}</span><span class="m">${esc(d.duplicate_reason)}</span></div>`).join("") || '<p class="muted">None.</p>'}</section></div></div>
-      <div class="grid2"><section class="card"><div class="card-h"><h2>Notification log</h2><small>slack · simulated</small></div>${noteRows()}</section>
-      <section class="card"><div class="card-h"><h2>Run log</h2><small>${R.retries} retries · ${R.errors} errors · latest 14</small></div>${feed(R.log.slice(-14).reverse())}</section></div>`;
-  }
-  $("#view").innerHTML = h;
+const LABEL = {hot:"Hot", warm:"Warm", cold:"Cold", review:"Check", duplicate:"Repeat"};
+const ACTION = {hot:"Sales alerted right away", warm:"Added to follow-up list", cold:"Saved, no alert", review:"Sent to a person to check", duplicate:"Merged, no second alert"};
+const kind = l => l.status === "duplicate" ? "duplicate" : l.status === "review" ? "review" : l.tier;
+const tag = k => `<span class="tag c-${k}">${LABEL[k]}</span>`;
+const short = l => esc((l.name || "Unknown").split(" ")[0]);
+function plainWhy(l, R) {
+  const k = kind(l);
+  if (k === "duplicate") { const o = R.leads.find(x => x.id === l.duplicate_of); return `Same person as #${o.id} ${esc(o.name)} (${esc(l.duplicate_reason)}).`; }
+  if (k === "review") return "Not enough details to be sure. A person makes the call.";
+  return esc(l.reason) + ".";
 }
-function showLead(id) {
-  const l = byId(id), d = $("#dlg");
-  d.innerHTML = `<div class="card-h"><h2>Lead #${l.id} · ${esc(l.name)}</h2>${pill(l)}</div>
-    <dl class="kv"><dt>Company</dt><dd>${esc(l.company || "—")}</dd><dt>Role</dt><dd>${esc(l.role || "—")}</dd><dt>Email</dt><dd class="mono">${esc(l.email || "—")}</dd>
-    <dt>Phone</dt><dd class="mono">${esc(l.phone || "—")}</dd><dt>Size · budget</dt><dd>${esc(l.company_size || "—")} · ${esc(l.budget || "—")}</dd><dt>Timeline</dt><dd>${esc(l.timeline || "—")}</dd>
-    ${l.status === "duplicate" ? `<dt>Duplicate of</dt><dd>#${l.duplicate_of} (${esc(l.duplicate_reason)})</dd>` : ""}${l.status === "review" ? `<dt>Review</dt><dd>${esc(l.review_reason)}</dd>` : ""}</dl>
-    <p class="msg" style="margin:10px 0">${esc(l.message)}</p>
-    <ul class="sig">${l.signals.map(([s, p]) => `<li><span>${esc(s)}</span><span class="p ${p < 0 ? "neg" : "pos"}">${p > 0 ? "+" : ""}${p}</span></li>`).join("")}
-    <li class="total"><span>Total → ${l.tier}, confidence ${l.confidence.toFixed(2)}</span><span class="p">${l.points}</span></li></ul>
-    <form method="dialog" style="margin-top:12px;text-align:right"><button class="btn">Close</button></form>`;
-  d.showModal();
-}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function run() {
-  const btns = document.querySelectorAll("#run,[data-run]"); btns.forEach(b => b.disabled = true);
-  $("#run-status").textContent = "running 24 leads…";
-  await new Promise(r => setTimeout(r, 250));
-  R = LeadEngine.runDemo(window.DEMO_BATCH);
-  $("#run-status").textContent = `${R.run_id} · ${R.leads.length} in · ${R.review.length} to review · ${R.dups.length} duplicates`;
-  btns.forEach(b => b.disabled = false); tab = "board"; render();
+  const b = $("#run"); b.disabled = true; $("#status").textContent = "Sorting 24 leads…";
+  const R = LeadEngine.runDemo(window.DEMO_BATCH);
+  ["#lane-in", "#lane-score"].forEach(s => $(s).innerHTML = "");
+  const cnt = {hot:0, warm:0, cold:0, review:0, duplicate:0};
+  Object.keys(cnt).forEach(k => { $(`#d-${k} b`).textContent = 0; $(`#c-${k}`).textContent = 0; });
+  const fast = matchMedia("(prefers-reduced-motion: reduce)").matches || new URLSearchParams(location.search).has("fast");
+  for (const l of R.leads) {
+    const c = document.createElement("span"); c.className = "chip"; c.textContent = `#${l.id} ${l.name ? short(l) : "?"}`;
+    $("#lane-in").append(c); if (!fast) await sleep(90);
+    c.remove(); const k = kind(l); c.className = "chip " + k; c.title = LABEL[k]; $("#lane-score").append(c);
+    cnt[k]++; const d = $(`#d-${k}`); d.querySelector("b").textContent = cnt[k]; $(`#c-${k}`).textContent = cnt[k];
+    d.classList.remove("flash"); void d.offsetWidth; d.classList.add("flash"); if (!fast) await sleep(110);
+  }
+  const src = R.leads.filter(x => x.source === "whatsapp").length;
+  $("#lane-in").innerHTML = `<span class="chip">✓ ${R.leads.length} received: ${R.leads.length - src} web form, ${src} WhatsApp</span>`;
+  $("#status").textContent = `Done: ${R.leads.length} leads sorted. ${cnt.hot} need a call today.`;
+  const order = {hot:0, warm:1, review:2, cold:3, duplicate:4};
+  const rows = R.leads.slice().sort((a, b) => order[kind(a)] - order[kind(b)] || a.id - b.id);
+  $("#table").innerHTML = `<table><thead><tr><th style="width:26%">Lead</th><th>Priority</th><th>Why</th><th class="hide-m">What happens</th></tr></thead><tbody>${rows.map(l =>
+    `<tr><td><b>${esc(l.name || "Unknown")}</b><div class="s">${esc(l.company || (l.source === "whatsapp" ? "via WhatsApp" : "via web form"))}</div></td><td>${tag(kind(l))}</td><td>${plainWhy(l, R)}</td><td class="hide-m s">${ACTION[kind(l)]}</td></tr>`).join("")}</tbody></table>`;
+  b.disabled = false; b.textContent = "↻ Run again";
 }
-document.addEventListener("click", e => {
-  const t = e.target.closest("#run,[data-run],[data-tab],[data-lead],tr[data-id]"); if (!t) return;
-  if (t.matches("#run,[data-run]")) run();
-  else if (t.dataset.tab) { tab = t.dataset.tab; render(); if (!R) $("#run-status").textContent = "press Run demo first"; }
-  else { e.preventDefault(); showLead(+(t.dataset.lead || t.dataset.id)); }
-});
+function tryLead(e) {
+  e && e.preventDefault();
+  const lead = LeadEngine.normalize({message: $("#t-msg").value, role: $("#t-role").value, company_size: $("#t-size").value,
+    budget: $("#t-budget").value, company: $("#t-company").value}, "web_form");
+  const s = LeadEngine.scoreRules(lead), k = s.confidence < 0.6 ? "review" : s.tier;
+  const verdict = {hot:"Hot: call today", warm:"Warm: follow up this week", cold:"Cold: no alert", review:`Unsure: a person checks (rules lean ${s.tier})`}[k];
+  $("#t-out").innerHTML = `<div class="c-${k}"><div class="s">Result</div><div class="verdict">${verdict}</div></div>
+    <p class="s" style="margin:6px 0 0">${ACTION[k]}. Score ${s.points} (hot from 7, warm from 3).</p>
+    <ul class="why">${s.signals.map(([t, p]) => `<li><span>${esc(t)}</span><span class="p ${p < 0 ? "neg" : "pos"}">${p > 0 ? "+" : ""}${p}</span></li>`).join("") || "<li>No buying signals found.</li>"}</ul>`;
+}
+$("#run").addEventListener("click", run); $("#try").addEventListener("submit", tryLead); tryLead();
 if (new URLSearchParams(location.search).has("run")) run();
 </script>
 </body></html>

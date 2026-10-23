@@ -50,3 +50,13 @@ def test_browser_scoring_matches_python_on_eval_sets(name):
         lead = normalize(r, r.get("source") or "web_form")
         assert lead == j["lead"]
         assert score_rules(lead) == j["rules"], lead
+
+
+def test_web_page_is_plain_and_honest():
+    html = (ROOT / "web/index.html").read_text()
+    for s in ("Run demo", "Leads come in", "Scored &amp; checked", "Sent to the right place", "Call today",
+              "Try your own lead", "rules only", "no AI and no n8n", "github.com/anggittaba/lead-intake-crm"):
+        assert s in html, s
+    low = html.lower()
+    for banned in ("webhook", "normalise", "pipeline"):  # banned names are checked in test_app.py
+        assert banned not in low, banned
